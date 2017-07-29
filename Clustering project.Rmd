@@ -1,0 +1,146 @@
+---
+title: "Clustering project"
+author: "Chris Leisner"
+date: "July 29, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This mini-project is based on the K-Means exercise from 'R in Action'
+Go [here](http://www.r-bloggers.com/k-means-clustering-from-r-in-action/) for the original blog post and solutions
+
+**Exercise 0**: Install these packages if you don't have them already
+```{r}
+#install.packages(c("cluster", "rattle","NbClust"))
+#I had to comment this out because it would not run in r markdown. 
+```
+
+```{r}
+data(wine, package="rattle")
+head(wine)
+```
+**Exercise 1:** Remove the first column from the data and scale the remaining data using the scale() function
+```{r}
+wineType <- wine$Type
+levels(wineType)
+```
+We will change the names of the winetypes from 1, 2, 3 to "type1", "type2", "type3" so that later, we can more easily distinguish the type labels from the cluster labels
+```{r}
+wineType2 <- ifelse(wineType == 1, "type1", ifelse(wineType == 2, "type2", "type3"))
+```
+Next we'll make sure that we re-labeled the wine types correctly
+```{r}
+wineTypes <- as.data.frame(cbind(wineType, wineType2))
+table(wineTypes$wineType, wineTypes$wineType2)
+```
+Yes, the re-labeling of wine types was done correctly. 
+
+Remove "type" from wine data, then scale the wine data
+```{r, results = "hide"}
+wine <- subset(wine, select = -Type )
+scale(wine, center = TRUE, scale = TRUE)
+```
+Now we'd like to cluster the data using K-Means. 
+How do we decide how many clusters to use if you don't know that already?
+We'll try two methods.
+
+**Method 1:** A plot of the total within-groups sums of squares against the 
+number of clusters in a K-means solution can be helpful. A bend in the 
+graph can suggest the appropriate number of clusters. 
+```{r}
+wssplot <- function(data, nc=15, seed=1234){
+	              wss <- (nrow(data)-1)*sum(apply(data,2,var))
+               	      for (i in 2:nc){
+		                    set.seed(seed)
+	                      wss[i] <- sum(kmeans(data, centers=i)$withinss)}
+	                
+		      plot(1:nc, wss, type="b", xlab="Number of Clusters",
+	                        ylab="Within groups sum of squares")
+	   }
+plot.new()
+wssplot(wine)
+```
+**Exercise 2:**
+
+* How many clusters does this method suggest?
+
+* Why does this method work? What's the intuition behind it?
+
+* Look at the code for wssplot() and figure out how it works
+
+This method suggests about four clusters, because according to the graph, there is a leveling off of the total within-groups sum of squares at four clusters. Basically, the total inter-cluster distances from the cluster points to the cluster centers is almost minimized when we use four clusters. We could minimize the total inter-cluster distance even more by making more clusters, but the resulting increased "tightness" of the clusters would be tiny and not worth the extra cluster creation. 
+
+**Method 2:** Use the NbClust library, which runs many experiments and gives a distribution of potential number of clusters.
+
+```{r}
+library(NbClust)
+set.seed(1234)
+nc <- NbClust(wine, min.nc=2, max.nc=15, method="kmeans")
+barplot(table(nc$Best.n[1,]),
+	          xlab="Number of Clusters", ylab="Number of Criteria",
+		            main="Number of Clusters Chosen by 26 Criteria")
+```
+**Exercise 3:** How many clusters does this method suggest?
+
+*"According to the majority rule, the best number of clusters is 2"*
+
+**Exercise 4:** Once you've picked the number of clusters, run k-means 
+using this number of clusters. Output the result of calling kmeans()
+into a variable fit.km
+
+Since the first method suggested four clusters and the second method suggested two clusters, I will choose the average of these two numbers as my number of clusters. An additional justification for choosing three clusters is that this is the number of wine types. 
+```{r}
+fit.km <- kmeans(wine, centers = 3, iter.max = 1000 )
+wineClusters <- fit.km$cluster
+```
+Here we will rename clusters 1, 2 and 3 "cluster1", "cluster2", and "cluster3" to distinguish the clusters from the wine types more easily: 
+```{r}
+wineClusters2 <- ifelse(wineClusters == 1, "cluster1", ifelse(wineClusters == 2, "cluster2", "cluster3"))
+wineClusters3 <- as.data.frame(cbind(wineClusters, wineClusters2))
+```
+Now we make sure that the renaming of the clusters was done correctly: 
+```{r}
+table(wineClusters3$wineClusters, wineClusters3$wineClusters2)
+```
+Yes, the renaming was done correctly
+
+Now we want to evaluate how well this clustering does.
+
+**Exercise 5:** Using the table() function, show how the clusters in fit.km\$clusters compares to the actual wine types in wine\$Type. Would you consider this a good clustering?
+```{r}
+wine <- cbind(wine, wineClusters2)
+wine <- cbind(wine, wineType2)
+table(wine$wineClusters2, wine$wineType2)
+```
+This table is rather confusing, because the cluster numbers don't equal the numbers of their corresponding wine types. The comparison of types and clusters will be more clear if we rename the clusters to match the numbers of the corresponding wine types. That is, relabel cluster 1 as cluster 3 and cluster 3 as cluster 1. We do this below: 
+```{r}
+wine$wineClusters3 <- ifelse(wine$wineClusters2 == "cluster1", "cluster3", ifelse(wine$wineClusters2 == "cluster3", "cluster1", "cluster2"))
+```
+Now we make sure that the renaming of the the clusters was done correctly:
+```{r}
+table(wine$wineClusters2, wine$wineClusters3)
+```
+Yes, the renaming of the clusters was done correctly. 
+
+Now let's do the table again: 
+```{r}
+table(wine$wineClusters3, wine$wineType2)
+```
+I would not consider this a good clustering, because there are too many misclassified wines. For example, 13 of the 59 wines of type 1, or `r round(100*13/59,1)` percent of the wines of type 1, were placed into the wrong cluster. In addition, `r round(100*21/71, 1)` percent of the wines of type 2 were placed into the wrong cluster, and `r round(19/48,1)` percent of the wines of type 3 were placed into the wrong cluster. 
+
+**Exercise 6:**
+
+* Visualize these clusters using  function clusplot() from the cluster library
+
+ * Would you consider this a good clustering?
+```{r}
+wine <- subset(wine, select = -c(wineClusters2, wineClusters3, wineType2))
+library(cluster)
+clusplot(pam(wine,3))
+```
+I would not consider this a good clustering. There are a great number of observations in the intersections of the three clusters. Moreover, "These two components explain [only] 55.41% of the point variability". In a good clustering the components would explain close to 100% of the point variability. 
+
+
